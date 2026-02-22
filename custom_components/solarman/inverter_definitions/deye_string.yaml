@@ -40,6 +40,10 @@ parameters:
             value: "HV 3-Phase Inverter 6-15kw"
           - key: [0x0008, 0x0601]
             value: "HV 3-Phase Inverter 20-50kw"
+          - key: 0x0103
+            value: "Off-Grid Inverter"
+          - key: 0x0104
+            value: "Energy Storage System"
         attributes:
           [
             "Device Modbus Address",
@@ -120,8 +124,9 @@ parameters:
         rule: 4
         registers: [0x0010, 0x0011]
         validation:
-          min: 0
-          max: 50000
+          min: 1
+          max: 136000
+          default: 136000
 
       - name: "Device MPPTs"
         attribute:
@@ -260,9 +265,15 @@ parameters:
           - registers: [0x006F]
             multiply:
               registers: [0x0070]
+          - registers: [0x0071]
+            multiply:
+              registers: [0x0072]
+          - registers: [0x0073]
+            multiply:
+              registers: [0x0074]
         validation:
           min: 0
-          max: 50000
+          max: 204000
           invalidate_all:
         icon: "mdi:solar-power-variant"
 
@@ -338,6 +349,80 @@ parameters:
         scale: 0.1
         rule: 1
         registers: [0x0070]
+        icon: "mdi:solar-power-variant"
+
+      - name: PV3 Power
+        alt: DC3 Power
+        mppt: 3
+        class: "power"
+        state_class: "measurement"
+        uom: "W"
+        rule: 1
+        digits: 3
+        scale: 0.1
+        sensors:
+          - registers: [0x0071]
+            multiply:
+              registers: [0x0072]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV3 Voltage"
+        alt: DC3 Voltage
+        mppt: 3
+        class: "voltage"
+        state_class: "measurement"
+        uom: "V"
+        scale: 0.1
+        rule: 1
+        registers: [0x0071]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV3 Current"
+        alt: DC3 Current
+        mppt: 3
+        class: "current"
+        state_class: "measurement"
+        uom: "A"
+        scale: 0.1
+        rule: 1
+        registers: [0x0072]
+        icon: "mdi:solar-power-variant"
+
+      - name: PV4 Power
+        alt: DC4 Power
+        mppt: 4
+        class: "power"
+        state_class: "measurement"
+        uom: "W"
+        rule: 1
+        digits: 3
+        scale: 0.1
+        sensors:
+          - registers: [0x0073]
+            multiply:
+              registers: [0x0074]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV4 Voltage"
+        alt: DC4 Voltage
+        mppt: 4
+        class: "voltage"
+        state_class: "measurement"
+        uom: "V"
+        scale: 0.1
+        rule: 1
+        registers: [0x0073]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV4 Current"
+        alt: DC4 Current
+        mppt: 4
+        class: "current"
+        state_class: "measurement"
+        uom: "A"
+        scale: 0.1
+        rule: 1
+        registers: [0x0074]
         icon: "mdi:solar-power-variant"
 
   - group: Meter
@@ -598,6 +683,10 @@ parameters:
         scale: 0.1
         rule: 3
         registers: [0x0056, 0x0057]
+        validation:
+          lookup: "device_rated_power_sensor"
+          scale: 1.1
+          invalidate_all:
 
       - name: Power losses
         description: Includes consumption of the inverter device itself as well AC/DC conversion losses
@@ -658,7 +747,7 @@ parameters:
         class: "power"
         state_class: "measurement"
         uom: "W"
-        rule: 1
+        rule: 2
         registers: [0x00C6, 0x00C7]
 
       - name: "Grid Power"

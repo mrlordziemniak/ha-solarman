@@ -4,6 +4,7 @@ import voluptuous as vol
 
 from typing import Any
 from logging import getLogger
+from dataclasses import asdict
 from socket import getaddrinfo, herror, gaierror, timeout
 
 from homeassistant.const import CONF_NAME
@@ -11,9 +12,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import section, AbortFlow
 from homeassistant.config_entries import DEFAULT_DISCOVERY_UNIQUE_ID, ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.typing import DiscoveryInfoType
-from homeassistant.helpers.selector import selector
 
 from .const import *
 from .common import *
@@ -28,16 +29,15 @@ CREATION_SCHEMA = {
 CONFIGURATION_SCHEMA = {
     vol.Required(CONF_HOST, default = DEFAULT_[CONF_HOST], description = {SUGGESTED_VALUE: DEFAULT_[CONF_HOST]}): str,
     vol.Optional(CONF_PORT, default = DEFAULT_[CONF_PORT], description = {SUGGESTED_VALUE: DEFAULT_[CONF_PORT]}): cv.port,
-    vol.Optional(CONF_TRANSPORT, default = DEFAULT_[CONF_TRANSPORT], description = {SUGGESTED_VALUE: DEFAULT_[CONF_TRANSPORT]}):
-        selector({ "select": {"mode": "dropdown", "options": ["tcp", "modbus_rtu", "modbus_tcp"], "translation_key": "transport"}}),
+    vol.Optional(CONF_TRANSPORT, default = DEFAULT_[CONF_TRANSPORT], description = {SUGGESTED_VALUE: DEFAULT_[CONF_TRANSPORT]}): SelectSelector(SelectSelectorConfig(options = ["tcp", "modbus_tcp", "modbus_rtu"], mode = "dropdown", translation_key = "transport")),
     vol.Optional(CONF_LOOKUP_FILE, default = DEFAULT_[CONF_LOOKUP_FILE], description = {SUGGESTED_VALUE: DEFAULT_[CONF_LOOKUP_FILE]}): str,
-    vol.Required(CONF_ADDITIONAL_OPTIONS):
-        section(vol.Schema({
+    vol.Required(CONF_ADDITIONAL_OPTIONS): section(
+        vol.Schema({
             vol.Optional(CONF_MOD, default = DEFAULT_[CONF_MOD], description = {SUGGESTED_VALUE: DEFAULT_[CONF_MOD]}): vol.All(vol.Coerce(int), vol.Range(min = 0, max = 2)),
             vol.Optional(CONF_MPPT, default = DEFAULT_[CONF_MPPT], description = {SUGGESTED_VALUE: DEFAULT_[CONF_MPPT]}): vol.All(vol.Coerce(int), vol.Range(min = 1, max = 12)),
             vol.Optional(CONF_PHASE, default = DEFAULT_[CONF_PHASE], description = {SUGGESTED_VALUE: DEFAULT_[CONF_PHASE]}): vol.All(vol.Coerce(int), vol.Range(min = 1, max = 3)),
             vol.Optional(CONF_PACK, default = DEFAULT_[CONF_PACK], description = {SUGGESTED_VALUE: DEFAULT_[CONF_PACK]}): vol.All(vol.Coerce(int), vol.Range(min = -1, max = 20)),
-            vol.Optional(CONF_BATTERY_NOMINAL_VOLTAGE, default = DEFAULT_[CONF_BATTERY_NOMINAL_VOLTAGE], description = {SUGGESTED_VALUE: DEFAULT_[CONF_BATTERY_NOMINAL_VOLTAGE]}): cv.positive_int,
+            vol.Optional(CONF_BATTERY_NOMINAL_VOLTAGE, default = DEFAULT_[CONF_BATTERY_NOMINAL_VOLTAGE], description = {SUGGESTED_VALUE: DEFAULT_[CONF_BATTERY_NOMINAL_VOLTAGE]}): cv.positive_float,
             vol.Optional(CONF_BATTERY_LIFE_CYCLE_RATING, default = DEFAULT_[CONF_BATTERY_LIFE_CYCLE_RATING], description = {SUGGESTED_VALUE: DEFAULT_[CONF_BATTERY_LIFE_CYCLE_RATING]}): cv.positive_int,
             vol.Optional(CONF_MB_SLAVE_ID, default = DEFAULT_[CONF_MB_SLAVE_ID], description = {SUGGESTED_VALUE: DEFAULT_[CONF_MB_SLAVE_ID]}): cv.positive_int
         }),
@@ -46,9 +46,7 @@ CONFIGURATION_SCHEMA = {
 }
 
 async def data_schema(hass: HomeAssistant, data_schema: dict[str, Any]) -> vol.Schema:
-    lookup_files = [DEFAULT_[CONF_LOOKUP_FILE]] + await async_listdir(hass.config.path(LOOKUP_DIRECTORY_PATH)) + await async_listdir(hass.config.path(LOOKUP_CUSTOM_DIRECTORY_PATH), "custom/")
-    _LOGGER.debug(f"step_user_data_schema: {LOOKUP_DIRECTORY_PATH}: {lookup_files}")
-    data_schema[CONF_LOOKUP_FILE] = vol.In(lookup_files)
+    data_schema[CONF_LOOKUP_FILE] = vol.In([DEFAULT_[CONF_LOOKUP_FILE]] + await async_listdir(hass.config.path(LOOKUP_DIRECTORY_PATH)) + await async_listdir(hass.config.path(LOOKUP_CUSTOM_DIRECTORY_PATH), "custom/"))
     _LOGGER.debug(f"step_user_data_schema: data_schema: {data_schema}")
     return vol.Schema(data_schema)
 
@@ -90,18 +88,18 @@ class ConfigFlowHandler(ConfigFlow, domain = DOMAIN):
 
     async def _handle_discovery(self, **discovery_info: str | int) -> ConfigFlowResult:
         _LOGGER.debug(f"Solarman found from {"integration" if "serial" in discovery_info else "dhcp"} discovery on {discovery_info["ip"]}")
-        if device := dr.async_get(self.hass).async_get_device(connections = {(dr.CONNECTION_NETWORK_MAC, dr.format_mac(discovery_info["mac"]))}):
+        connections = {(dr.CONNECTION_NETWORK_MAC, dr.format_mac(discovery_info["mac"]))}
+        if device := dr.async_get(self.hass).async_get_device(connections = connections):
             for entry in self._async_current_entries():
                 if entry.entry_id == device.primary_config_entry:
-                    if entry.options.get(CONF_HOST) != discovery_info["ip"]:
+                    if str(getipaddress(entry.options.get(CONF_HOST))) != discovery_info["ip"] and discovery_info["ip"] != IP_ANY:
                         self.hass.config_entries.async_update_entry(entry, options = entry.options | {CONF_HOST: discovery_info["ip"]})
                     return self.async_abort(reason = "already_configured_device")
-        else:
-            for entry in self._async_current_entries():
-                if entry.options.get(CONF_HOST) == discovery_info["ip"]:
-                    if device := dr.async_get(self.hass).async_get_device(identifiers = {(DOMAIN, entry.entry_id)}):
-                        dr.async_get(self.hass).async_update_device(device.id, new_connections = {(dr.CONNECTION_NETWORK_MAC, dr.format_mac(discovery_info["mac"]))})
-                    return self.async_abort(reason = "already_configured_device")
+        for entry in self._async_current_entries():
+            if str(getipaddress(entry.options.get(CONF_HOST))) == discovery_info["ip"]:
+                if device := dr.async_get(self.hass).async_get_device(identifiers = {(DOMAIN, entry.entry_id)}):
+                    dr.async_get(self.hass).async_update_device(device.id, new_connections = connections)
+                return self.async_abort(reason = "already_configured_device")
         await self.async_set_unique_id(DEFAULT_DISCOVERY_UNIQUE_ID)
         self._abort_if_unique_id_configured()
         if self._async_in_progress(include_uninitialized = True):
@@ -114,7 +112,7 @@ class ConfigFlowHandler(ConfigFlow, domain = DOMAIN):
         return await self._handle_discovery(**discovery_info)
 
     async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> ConfigFlowResult:
-        return await self._handle_discovery(ip = discovery_info.ip, hostname = discovery_info.hostname, mac = discovery_info.macaddress)
+        return await self._handle_discovery(**asdict(discovery_info), mac = discovery_info.macaddress)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         _LOGGER.debug(f"ConfigFlowHandler.async_step_user: {user_input}")
@@ -131,7 +129,7 @@ class ConfigFlowHandler(ConfigFlow, domain = DOMAIN):
             else:
                 name = None
             if not (ip := None if not user_input else user_input.get(CONF_HOST)):
-                async for _, v in await discover(self.hass):
+                async for v in await discover(self.hass):
                     try:
                         self._async_abort_entries_match({CONF_HOST: (ip := v["ip"])})
                         break

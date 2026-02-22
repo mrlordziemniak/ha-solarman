@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-import os
 import ast
 import time
 import yaml
+import socket
 import asyncio
 import aiofiles
 import voluptuous as vol
 
+from pathlib import Path
 from functools import wraps
+from aiohttp import FormData
 from logging import getLogger
 from typing import Any, Iterable
+from ipaddress import IPv4Address, AddressValueError
 from aiohttp import ClientSession, ClientError, ContentTypeError
 
 from homeassistant.util import slugify as _slugify
@@ -45,7 +48,7 @@ def throttle(delay: float = 1):
         return wrapper
     return decorator
 
-async def request(url: str, **kwargs: Any):
+async def _request(url: str, **kwargs: Any):
     try:
         async with ClientSession(trust_env = kwargs.get("trust_env", False)) as s:
             method = s.post if kwargs.get("data") or kwargs.get("json") else s.get
@@ -60,19 +63,8 @@ async def request(url: str, **kwargs: Any):
     except ClientError as e:
         raise e
 
-def logger_set_data(enable: bool):
-    return {
-        "server_a": ",5406.deviceaccess.host,10000,TCP" if enable else ",,,TCP",
-        "cnmo_ip_a": "",
-        "cnmo_ds_a": "5406.deviceaccess.host" if enable else "",
-        "cnmo_pt_a": "10000" if enable else "",
-        "cnmo_tp_a": "TCP",
-        "server_b": ",,,TCP",
-        "cnmo_ip_b": "",
-        "cnmo_ds_b": "",
-        "cnmo_pt_b": "",
-        "cnmo_tp_b": "TCP"
-    }
+async def request(domain: str, path: str, referer: str = "", data: FormData | dict = None):
+    return await _request(f"http://{domain}/{path}", auth = LOGGER_AUTH, headers = {"Referer": f"http://{domain}/{referer}"}, data = (data if isinstance(data, FormData) else FormData(data)) if data else None)
 
 async def async_execute(x):
     return await asyncio.get_running_loop().run_in_executor(None, x)
@@ -88,8 +80,14 @@ def protected(value, error):
 def get_current_file_name(value):
     return result[-1] if len(result := value.rsplit('.', 1)) > 0 else ""
 
-async def async_listdir(path, prefix = ""):
-    return sorted([prefix + f for f in await async_execute(lambda: os.listdir(path)) if os.path.isfile(path + f)]) if os.path.exists(path) else []
+async def async_listdir(path, prefix = "", extensions = ("yaml", "yml")):
+    return sorted([prefix + f.name for f in await async_execute(lambda: p.glob('*')) if f.is_file() and f.name.endswith(extensions)]) if (p := Path(path)) and p.exists() else []
+
+def getipaddress(address: str):
+    try:
+        return IPv4Address(address)
+    except AddressValueError:
+        return IPv4Address(socket.gethostbyname(address))
 
 def to_dict(*keys: list):
     return {k: k for k in keys}
@@ -124,20 +122,28 @@ def ensure_list(value):
 def ensure_list_safe_len(value: list):
     return ensure_list(value), len(value) if isinstance(value, list) else (1 if isinstance(value, dict) and value else 0)
 
-def create_request(code, start, end):
+def create_request(code: int, start: int, end: int):
     return { REQUEST_CODE: code, REQUEST_START: start, REQUEST_END: end, REQUEST_COUNT: end - start + 1 }
 
 async def lookup_profile(request, parameters):
     if (response := await request(requests = create_request(*AUTODETECTION_REQUEST_DEYE))) and (device_type := get_addr_value(response, *AUTODETECTION_DEVICE_DEYE)):
-        f, m, c = next(iter([AUTODETECTION_DEYE[i] for i in AUTODETECTION_DEYE if device_type in i]))
-        if (t := get_addr_value(response, *AUTODETECTION_TYPE_DEYE)) and device_type in AUTODETECTION_DEYE_P1[0]:
-            parameters[PARAM_[CONF_PHASE]] = min(1 if t <= 2 or t == 8 else 3, parameters[PARAM_[CONF_PHASE]])
-        if (v := get_addr_value(response, AUTODETECTION_CODE_DEYE, c)) and (t := (v & 0x0F00) // 0x100) and (p := v & 0x000F) and (t := 2 if t > 12 else t) and (p := 3 if p > 3 else p):
-            parameters[PARAM_[CONF_MOD]], parameters[PARAM_[CONF_MPPT]], parameters[PARAM_[CONF_PHASE]] = max(m, parameters[PARAM_[CONF_MOD]]), min(t, parameters[PARAM_[CONF_MPPT]]), min(p, parameters[PARAM_[CONF_PHASE]])
-        if device_type in (*AUTODETECTION_DEYE_4P3[0], *AUTODETECTION_DEYE_1P3[0]) and (response := await request(requests = create_request(*AUTODETECTION_BATTERY_REQUEST_DEYE))) and (p := get_addr_value(response, *AUTODETECTION_BATTERY_NUMBER_DEYE)) is not None:
-            parameters[PARAM_[CONF_PACK]] = p if parameters[PARAM_[CONF_PACK]] == DEFAULT_[CONF_PACK] else min(p, parameters[PARAM_[CONF_PACK]])
-        return f
-    raise Exception("Unable to read Device Type at address 0x0000")
+        try:
+            f, m, c = next(iter([AUTODETECTION_DEYE[i] for i in AUTODETECTION_DEYE if device_type in i]))
+            parameters[PARAM_[CONF_MOD]] = max(m, parameters[PARAM_[CONF_MOD]])
+            if (t := get_addr_value(response, *AUTODETECTION_TYPE_DEYE)) and device_type in AUTODETECTION_DEYE_P1[0]:
+                parameters[PARAM_[CONF_PHASE]] = min(1 if t <= 2 or t == 8 else 3, parameters[PARAM_[CONF_PHASE]])
+            if (v := get_addr_value(response, AUTODETECTION_CODE_DEYE, c)) and (t := (v & 0x0F00) // 0x100) and (p := v & 0x000F) and (t := 2 if t > 12 else t) and (p := 3 if p > 3 else p):
+                parameters[PARAM_[CONF_MPPT]], parameters[PARAM_[CONF_PHASE]] = min(t, parameters[PARAM_[CONF_MPPT]]), min(p, parameters[PARAM_[CONF_PHASE]])
+            try:
+                if device_type in (*AUTODETECTION_DEYE_4P3[0], *AUTODETECTION_DEYE_1P3[0]) and (response := await request(requests = create_request(*AUTODETECTION_BATTERY_REQUEST_DEYE))) and (p := get_addr_value(response, *AUTODETECTION_BATTERY_NUMBER_DEYE)) is not None:
+                    parameters[PARAM_[CONF_PACK]] = p if parameters[PARAM_[CONF_PACK]] == DEFAULT_[CONF_PACK] else min(p, parameters[PARAM_[CONF_PACK]])
+            except:
+                parameters[PARAM_[CONF_PACK]] = DEFAULT_[CONF_PACK]
+                _LOGGER.debug(f"Unable to read Number of Battery packs", exc_info = True)
+            return f
+        except StopIteration:
+            raise Exception(f"Unknown Device Type: {device_type}")
+    raise Exception("Unable to read Device Type")
 
 def process_profile(filename, parameters):
     if filename in PROFILE_REDIRECT and (r := PROFILE_REDIRECT[filename]):
@@ -174,8 +180,8 @@ def build_device_info(entry_id, serial, mac, host, info, name):
     device_info["identifiers"] = ({(DOMAIN, entry_id)} if entry_id else set()) | ({(DOMAIN, serial)} if serial else set())
     device_info["connections"] = {(CONNECTION_NETWORK_MAC, format_mac(mac))} if mac else set()
     device_info["configuration_url"] = build_configuration_url(host) if host else None
-    device_info["serial_number"] = serial if serial else None
     device_info["manufacturer"] = manufacturer
+    device_info["serial_number"] = serial
     device_info["model"] = model
     device_info["name"] = name
 
@@ -213,10 +219,13 @@ def slugify(*items: Iterable[str | None], separator: str = "_"):
 def entity_key(object: dict):
     return slugify(object["name"], object["platform"])
 
+def enforce_parameters(source: dict, parameters: dict):
+    return len((keys := source.keys() & parameters.keys())) == 0 or all(source[k] <= parameters[k] for k in keys)
+
 def preprocess_descriptions(item, group, table, code, parameters):
     def modify(source: dict):
         for i in dict(source):
-            if i in ("scale", "min", "max"):
+            if i in ("scale", "min", "max", "default", "step"):
                 unwrap(source, i, parameters[CONF_MOD])
             if i == "registers" and source[i] and (isinstance(source[i], list) and isinstance(source[i][0], list)):
                 unwrap(source, i, parameters[CONF_MOD])
@@ -237,11 +246,14 @@ def preprocess_descriptions(item, group, table, code, parameters):
         for s in sensors:
             modify(s)
             if r := s.get("registers"):
-                registers.extend(r)
-                if m := s.get("multiply"):
-                    modify(m)
-                    if m_r := m.get("registers"):
-                        registers.extend(m_r)
+                if enforce_parameters(s, parameters):
+                    registers.extend(r)
+                    if m := s.get("multiply"):
+                        modify(m)
+                        if m_r := m.get("registers"):
+                            registers.extend(m_r)
+                else:
+                    s["registers"] = []
 
     g = dict(group)
     g.pop("items")
@@ -252,24 +264,23 @@ def preprocess_descriptions(item, group, table, code, parameters):
 
     if sensors := item.get("sensors"):
         for s in sensors:
-            bulk_inherit(s, item, REQUEST_CODE, "scale")
-            if m := s.get("multiply"):
-                bulk_inherit(m, s, REQUEST_CODE, "scale")
+            if s.get("registers"):
+                bulk_inherit(s, item, REQUEST_CODE, "scale")
+                if m := s.get("multiply"):
+                    bulk_inherit(m, s, REQUEST_CODE, "scale")
 
     return item
 
-def postprocess_descriptions(coordinator, platform):
+def postprocess_descriptions(coordinator):
     def not_enabled(description):
         return (l := description.get("enabled_lookup")) is not None and (k := list(l)[0]) is not None and (v := coordinator.data.get(k)) is not None and not get_tuple(v) in l[k]
 
-    descriptions = coordinator.device.profile.parser.get_entity_descriptions(platform)
-
-    _LOGGER.debug(f"postprocess_descriptions for {platform} platform: {descriptions}")
+    descriptions = coordinator.device.profile.parser.get_entity_descriptions()
 
     for description in descriptions:
         if not_enabled(description):
             continue
-        
+
         if (nlookup := description.get("name_lookup")) is not None and (prefix := coordinator.data.get(nlookup)) is not None:
             description["name"] = replace_first(description["name"], get_tuple(prefix))
             description["key"] = entity_key(description)
@@ -279,11 +290,23 @@ def postprocess_descriptions(coordinator, platform):
                 if not_enabled(sensor):
                     sensors.remove(sensor)
 
+        if validation := description.get("validation"):
+            if (vlookup := validation.get("lookup")) and (max_value := coordinator.data.get(vlookup)) is not None and (value := abs(get_tuple(max_value))):
+                if "min" not in validation:
+                    validation["min"] = -value
+                if "max" not in validation:
+                    validation["max"] = value
+            if s := validation.get("scale"):
+                if "min" in validation:
+                    validation["min"] *= s
+                if "max" in validation:
+                    validation["max"] *= s
+
         # Temporary location of fix for latest HA changes regarding default precision behavior
-        if description["platform"] == "sensor" and (description.get("class") or description.get("device_class")) in ("energy", "energy_storage") and (description.get("suggested_unit_of_measurement") or description.get("unit_of_measurement") or description.get("uom")) == "kWh":
+        if description["platform"] == "sensor" and description.get('suggested_display_precision') is None and (description.get("class") or description.get("device_class")) in ("energy", "energy_storage") and (description.get("suggested_unit_of_measurement") or description.get("unit_of_measurement") or description.get("uom")) == "kWh":
             description["suggested_display_precision"] = 1
 
-        yield description
+    _LOGGER.debug(f"postprocess_descriptions: {descriptions}")
 
 def get_code(item, type, default = None):
     if REQUEST_CODE in item and (code := item[REQUEST_CODE]):
@@ -337,8 +360,8 @@ def lookup_value(value, dictionary):
 def get_number(value, digits: int = -1):
     return int(value) if isinstance(value, int) or (isinstance(value, float) and value.is_integer()) else ((n if (n := round(value, digits)) and not n.is_integer() else int(n)) if digits > -1 else float(value))
 
-def get_request_code(request):
-    return request[REQUEST_CODE] if REQUEST_CODE in request else request[REQUEST_CODE_ALT]
+def get_request_code(request: dict[str, int], default: int | None = None):
+    return request[REQUEST_CODE] if REQUEST_CODE in request else request[REQUEST_CODE_ALT] if REQUEST_CODE_ALT in request else default
 
 def get_tuple(tuple, index = 0):
     return tuple[index] if tuple else None

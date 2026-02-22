@@ -42,7 +42,7 @@ LOGGER_CMD = "do_cmd.html"
 LOGGER_SUCCESS = "success.html"
 LOGGER_RESTART = "restart.html"
 LOGGER_RESTART_DATA = FormData({"HF_PROCESS_CMD": "RESTART"})
-LOGGER_REGEX = {"server": compile("var server_[a|b].?=.?\"(.*)\";"), "ap": compile("var apsta_mode.?=.?\"(.*)\";")}
+LOGGER_REGEX = {"setting_protocol": compile("var net_setting_pro.?=.?\"(.*)\";"), "setting_cs": compile("var net_setting_cs.?=.?\"(.*)\";"), "setting_port": compile("var net_setting_port.?=.?\"(.*)\";"), "setting_ip": compile("var net_setting_ip.?=.?\"(.*)\";"), "setting_timeout": compile("var net_setting_to.?=.?\"(.*)\";"), "mode": compile("var yz_tmode.?=.?\"(.*)\";"), "server": compile("var server_[a|b].?=.?\"(.*)\";"), "ap": compile("var apsta_mode.?=.?\"(.*)\";")}
 
 SUGGESTED_VALUE = "suggested_value"
 UPDATE_INTERVAL = "update_interval"
@@ -74,7 +74,7 @@ DEFAULT_ = {
 }
 
 AUTODETECTION_DEYE_STRING = ((0x0002, 0x0200), "deye_string.yaml")
-AUTODETECTION_DEYE_P1 = ((0x0003, 0x0300), "deye_hybrid.yaml")
+AUTODETECTION_DEYE_P1 = ((0x0003, 0x0300, 0x0103, 0x0104), "deye_hybrid.yaml")
 AUTODETECTION_DEYE_MICRO = ((0x0004, 0x0400), "deye_micro.yaml")
 AUTODETECTION_DEYE_4P3 = ((0x0005, 0x0500), "deye_p3.yaml")
 AUTODETECTION_DEYE_1P3 = ((0x0006, 0x0007, 0x0600, 0x0008, 0x0601), "deye_p3.yaml")
@@ -89,7 +89,7 @@ AUTODETECTION_BATTERY_REGISTERS_DEYE = (0x2712, 0x2712)
 AUTODETECTION_BATTERY_REQUEST_DEYE = (AUTODETECTION_CODE_DEYE, *AUTODETECTION_BATTERY_REGISTERS_DEYE)
 AUTODETECTION_BATTERY_NUMBER_DEYE = (AUTODETECTION_CODE_DEYE, AUTODETECTION_BATTERY_REGISTERS_DEYE[0])
 
-PROFILE_REDIRECT = { "sofar_wifikit.yaml": "sofar_hybrid.yaml", "sofar_hyd-es.yaml": "sofar_hybrid.yaml:mod=1", "sofar_hyd3k-6k-es.yaml": "sofar_hybrid.yaml:mod=1", "hyd-zss-hp-3k-6k.yaml": "sofar_g3.yaml:pack=1", "solis_1p8k-5g.yaml": "solis_1p-5g.yaml", "solis_3p-4g+.yaml": "solis_3p-4g.yaml", "sofar_tlx-g3.yaml": "sofar_g3.yaml", "sofar_lsw3.yaml": "sofar_string.yaml", "zcs_azzurro-1ph-tl-v3.yaml": "sofar_string.yaml:mppt=1&l=1", "zcs_azzurro-hyd-zss-hp.yaml": "sofar_g3.yaml:pack=1", "zcs_azzurro-ktl-v3.yaml": "sofar_g3.yaml", "pylontech_Force-H.yaml": "pylontech_force.yaml:mod=1" }
+PROFILE_REDIRECT = { "sofar_wifikit.yaml": "sofar_hybrid.yaml", "sofar_hyd-es.yaml": "sofar_hybrid.yaml:mod=1", "sofar_hyd3k-6k-es.yaml": "sofar_hybrid.yaml:mod=1", "hyd-zss-hp-3k-6k.yaml": "sofar_g3.yaml:pack=1", "solis_1p8k-5g.yaml": "solis_1p-5g.yaml", "solis_3p-4g+.yaml": "solis_3p-4g.yaml", "sofar_tlx-g3.yaml": "sofar_g3.yaml", "sofar_lsw3.yaml": "sofar_string.yaml", "zcs_azzurro-1ph-tl-v3.yaml": "sofar_string.yaml:mppt=1&l=1", "zcs_azzurro-hyd-zss-hp.yaml": "sofar_g3.yaml:pack=1", "zcs_azzurro-ktl-v3.yaml": "sofar_g3.yaml", "pylontech_Force-H.yaml": "pylontech_force.yaml:mod=1", "astro-energy_2mppt.yaml": "astro-energy_micro.yaml" }
 
 PARAM_ = { CONF_MOD: CONF_MOD, CONF_MPPT: CONF_MPPT, CONF_PHASE: "l", CONF_PACK: CONF_PACK }
 

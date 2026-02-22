@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from aiohttp import FormData
 from logging import getLogger
 
 from homeassistant.core import HomeAssistant
@@ -21,7 +20,7 @@ _PLATFORM = get_current_file_name(__name__)
 async def async_setup_entry(_: HomeAssistant, config_entry: ConfigEntry[Coordinator], async_add_entities: AddEntitiesCallback) -> bool:
     _LOGGER.debug(f"async_setup_entry: {config_entry.options}")
 
-    async_add_entities([SolarmanRestart(config_entry.runtime_data)] + [SolarmanButtonEntity(config_entry.runtime_data, d).init() for d in postprocess_descriptions(config_entry.runtime_data, _PLATFORM)])
+    async_add_entities([SolarmanRestart(config_entry.runtime_data)] + [SolarmanButtonEntity(config_entry.runtime_data, d).init() for d in config_entry.runtime_data.device.profile.parser.get_entity_descriptions(_PLATFORM)])
 
     return True
 
@@ -41,8 +40,8 @@ class SolarmanRestart(SolarmanEntity, ButtonEntity):
         return self.coordinator.device.endpoint.info is not None
 
     async def async_press(self):
-        await request(f"http://{self.coordinator.device.config.host}/{LOGGER_RESTART}", auth = LOGGER_AUTH)
-        await request(f"http://{self.coordinator.device.config.host}/{LOGGER_SUCCESS}", auth = LOGGER_AUTH, data = LOGGER_RESTART_DATA, headers = {"Referer": f"http://{self.coordinator.device.config.host}/{LOGGER_RESTART}"})
+        await request(self.coordinator.device.config.host, LOGGER_RESTART)
+        await request(self.coordinator.device.config.host, LOGGER_SUCCESS, LOGGER_RESTART, LOGGER_RESTART_DATA)
 
 class SolarmanButtonEntity(SolarmanWritableEntity, ButtonEntity):
     def __init__(self, coordinator, sensor):

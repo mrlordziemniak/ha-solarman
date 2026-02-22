@@ -22,8 +22,13 @@ parameters:
         mppt: 1
         state_class: "measurement"
         uom: "W"
-        rule: 3
-        registers: [0x16A2]
+        rule: 1
+        digits: 0
+        sensors:
+          - registers: [0x3132]
+          - registers: [0x3135]
+          - registers: [0x3138]
+          - registers: [0x313B]
         icon: "mdi:solar-power-variant"
 
       - name: "PV1 Voltage"
@@ -84,6 +89,64 @@ parameters:
         registers: [0x3135]
         icon: "mdi:solar-power-variant"
 
+      - name: "PV3 Voltage"
+        class: "voltage"
+        mppt: 3
+        state_class: "measurement"
+        uom: "V"
+        scale: 0.1
+        rule: 1
+        registers: [0x3136]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV3 Current"
+        class: "current"
+        mppt: 3
+        state_class: "measurement"
+        uom: "A"
+        scale: 0.1
+        rule: 1
+        registers: [0x3137]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV3 Power"
+        class: "power"
+        mppt: 3
+        state_class: "measurement"
+        uom: "W"
+        rule: 1
+        registers: [0x3138]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV4 Voltage"
+        class: "voltage"
+        mppt: 4
+        state_class: "measurement"
+        uom: "V"
+        scale: 0.1
+        rule: 1
+        registers: [0x3139]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV4 Current"
+        class: "current"
+        mppt: 4
+        state_class: "measurement"
+        uom: "A"
+        scale: 0.1
+        rule: 1
+        registers: [0x313A]
+        icon: "mdi:solar-power-variant"
+
+      - name: "PV4 Power"
+        class: "power"
+        mppt: 4
+        state_class: "measurement"
+        uom: "W"
+        rule: 1
+        registers: [0x313B]
+        icon: "mdi:solar-power-variant"
+
   - group: Battery
     update_interval: 5
     items:
@@ -107,6 +170,7 @@ parameters:
         class: "battery"
         state_class: "measurement"
         uom: "%"
+        scale: 0.1
         rule: 1
         registers: [0x3145]
 
@@ -114,7 +178,8 @@ parameters:
         class: "temperature"
         state_class: "measurement"
         uom: "°C"
-        rule: 1
+        scale: 0.1
+        rule: 2
         registers: [0x3146]
 
       - name: "Battery Power"
@@ -123,6 +188,7 @@ parameters:
         uom: "W"
         rule: 2
         registers: [0x314A]
+
   - group: Device
     items:
       - name: "GFCI Leakage Current"
@@ -134,14 +200,14 @@ parameters:
         icon: "mdi:pipe-leak"
 
       - name: "Temperature"
-        class: "Temperature"
+        class: "temperature"
         state_class: "measurement"
         uom: "°C"
         rule: 2
         registers: [0x311A]
 
       - name: "Board Temperature"
-        class: "Temperature"
+        class: "temperature"
         state_class: "measurement"
         uom: "°C"
         rule: 2
@@ -287,27 +353,27 @@ parameters:
           min: 0.1
 
       - name: Today Losses
-        alt: Daily Losses
         friendly_name: Today's Losses
-        description: Includes today's consumption of the inverter device itself as well AC/DC conversion losses
+        description: Includes inverter self-consumption and conversion losses (daily)
         class: "energy"
         state_class: "total_increasing"
-        ensure_increasing:
         uom: "kWh"
-        rule: 1
         digits: 1
         scale: 0.001
         uint: enforce
+        rule: 1
+        ensure_increasing:
         sensors:
-          - registers: [0x3155, 0x3156]
-          - registers: [0x3153, 0x3154]
-          - registers: [0x316F, 0x3170]
+          - registers: [0x3153, 0x3154]   # PV today (add)
+          - registers: [0x316B, 0x316C]   # Grid import today (add)
+          - registers: [0x316F, 0x3170]   # Battery discharge today (add)
           - operator: subtract
-            registers: [0x3159, 0x315A]
+            registers: [0x3155, 0x3156]   # Grid export today (subtract)
           - operator: subtract
-            registers: [0x3157, 0x3158]
+            registers: [0x3157, 0x3158]   # Load today (subtract)
           - operator: subtract
-            registers: [0x316D, 0x316E]
+            registers: [0x316D, 0x316E]   # Battery charge today (subtract)
+
 
       - name: Total Losses
         description: Includes total consumption of the inverter device itself as well AC/DC conversion losses
@@ -414,7 +480,7 @@ parameters:
         registers: [0x3118]
 
       - name: "Grid Frequency"
-        class: "Frequency"
+        class: "frequency"
         state_class: "measurement"
         uom: "Hz"
         scale: 0.01

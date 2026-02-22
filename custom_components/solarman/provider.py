@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import socket
-
 from typing import Any
-from aiohttp import FormData
+from logging import getLogger
 from dataclasses import dataclass
 from propcache import cached_property
 from collections.abc import Awaitable, Callable
-from ipaddress import IPv4Address, AddressValueError
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
@@ -16,6 +13,8 @@ from .const import *
 from .common import *
 from .discovery import discover
 from .parser import ParameterParser
+
+_LOGGER = getLogger(__name__)
 
 @dataclass
 class ConfigurationProvider:
@@ -78,37 +77,44 @@ class EndPointProvider:
 
     @cached_property
     def ip(self):
-        try:
-            return IPv4Address(self.host)
-        except AddressValueError:
-            return IPv4Address(socket.gethostbyname(self.host))    
+        return getipaddress(self.host) 
 
     async def init(self):
         await self.discover()
         return self
 
     async def discover(self):
-        if self.ip.is_private and (devices := {k: v async for k, v in await discover(self.hass, str(self.ip)) if v["ip"] == str(self.ip)}.items()):
-            self.serial, v = next(iter(devices))
-            self.host = v["ip"]
-            self.mac = v["mac"]
-            try:
-                self.info = await request(f"http://{self.host}/{LOGGER_SET}", auth = LOGGER_AUTH)
-                await request(f"http://{self.host}/{LOGGER_CMD}", auth = LOGGER_AUTH, data = FormData({"net_setting_pro": "TCP" if "tcp" in self.transport else "UDP", "net_setting_cs": "SERVER" if "tcp" in self.transport else "", "net_setting_pro_sel": "TCPSERVER" if "tcp" in self.transport else "UDP", "net_setting_port": self.port, "net_setting_ip": "0.0.0.0", "net_setting_to": "300"}), headers = {"Referer": f"http://{self.host}/{LOGGER_SET}"})
-            except:
-                pass
+        try:
+            if "modbus" not in self.transport and self.ip.is_private and (d := await anext((v async for v in await discover(self.hass, str(self.ip)) if v["ip"] == str(self.ip)))):
+                self.serial = d["serial"]
+                self.host = d["ip"]
+                self.mac = d["mac"]
+                self.info = await request(self.host, LOGGER_SET)
+                if next(iter(LOGGER_REGEX["setting_protocol"].finditer(self.info))).group(1) != "TCP" if "tcp" in self.transport else "UDP" or next(iter(LOGGER_REGEX["setting_cs"].finditer(self.info))).group(1) != "SERVER" if "tcp" in self.transport else "" or next(iter(LOGGER_REGEX["setting_port"].finditer(self.info))).group(1) != self.port or next(iter(LOGGER_REGEX["setting_ip"].finditer(self.info))).group(1) != IP_ANY or next(iter(LOGGER_REGEX["setting_timeout"].finditer(self.info))).group(1) != "300":
+                    await request(self.host, LOGGER_CMD, LOGGER_SET,
+                        {
+                            "net_setting_pro": "TCP" if "tcp" in self.transport else "UDP",
+                            "net_setting_cs": "SERVER" if "tcp" in self.transport else "",
+                            "net_setting_pro_sel": "TCPSERVER" if "tcp" in self.transport else "UDP",
+                            "net_setting_port": self.port,
+                            "net_setting_ip": "0.0.0.0",
+                            "net_setting_to": "300"
+                        }
+                    )
+                    await request(self.host, LOGGER_SUCCESS, LOGGER_CMD, LOGGER_RESTART_DATA)
+        except Exception as e:
+            _LOGGER.debug(f"[{self.host}] Error", exc_info = True)
 
     async def load(self):
         try:
-            self.info = await request(f"http://{self.host}/{LOGGER_SET}", auth = LOGGER_AUTH)
-        except:
-            pass
+            self.info = await request(self.host, LOGGER_SET)
+        except Exception as e:
+            _LOGGER.debug(f"[{self.host}] Error", exc_info = True)
 
 @dataclass
 class ProfileProvider:
     config: ConfigurationProvider
     endpoint: EndPointProvider
-    info: dict[str, str] | None = None
     parser: ParameterParser | None = None
 
     def __getattr__(self, attr: str):
@@ -122,7 +128,11 @@ class ProfileProvider:
     def parameters(self):
         return {PARAM_[k]: int(self._additional_options.get(k, DEFAULT_[k])) for k in PARAM_}
 
-    async def resolve(self, request: Callable[[int, dict], Awaitable[dict]] | None = None):
-        if (f := await lookup_profile(request, self.parameters) if self.auto else self.filename) and f != DEFAULT_[CONF_LOOKUP_FILE] and (n := process_profile(f, self.parameters)) and (p := await yaml_open(self.config.directory + n)):
-            self.info = (unwrap(p["info"], "model", self.parameters[PARAM_[CONF_MOD]]) if "info" in p else {}) | {"filename": f}
-            self.parser = ParameterParser(p, self.parameters)
+    @cached_property
+    def info(self):
+        return self.parser.info
+
+    async def init(self, request: Callable[[int, dict], Awaitable[dict]] | None = None):
+        if (f := await lookup_profile(request, self.parameters) if self.auto else self.filename) and f != DEFAULT_[CONF_LOOKUP_FILE] and (n := process_profile(f, self.parameters)):
+            self.parser = await ParameterParser().init(self.config.directory, n, self.parameters)
+        return self

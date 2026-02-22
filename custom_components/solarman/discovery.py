@@ -16,7 +16,7 @@ _LOGGER = getLogger(__name__)
 
 class DiscoveryProtocol(asyncio.DatagramProtocol):
     def __init__(self, addresses: list[str] | str):
-        self.responses: list[asyncio.Queue[tuple[int, dict[str, str]]]] = []
+        self.responses: list[asyncio.Queue[dict[str, str]]] = []
         self.addresses = addresses
 
     def connection_made(self, transport):
@@ -26,10 +26,10 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                 transport.sendto(message, (address, DISCOVERY_PORT))
 
     def datagram_received(self, data, addr):
-        if len(d := data.decode().split(',')) == 3 and (s := int(d[2])):
+        if len(d := data.decode().split(',')) == 3:
+            _LOGGER.debug(f"DiscoveryProtocol: [{d[0]}, {d[1]}, {d[2]}] from {addr}")
             for r in self.responses:
-                r.put_nowait((s, {"ip": d[0], "mac": d[1]}))
-            _LOGGER.debug(f"DiscoveryProtocol: [{d[0]}, {d[1]}, {s}] from {addr}")
+                r.put_nowait({"ip": d[0], "mac": d[1], "hostname": d[2]})
 
     def error_received(self, e):
         _LOGGER.debug(f"DiscoveryProtocol: {strepr(e)}")
@@ -39,7 +39,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
 class Discovery:
     def __init__(self):
-        self._semaphore = asyncio.Semaphore(1)
+        self._lock = asyncio.Lock()
         self._transport: asyncio.DatagramTransport | None = None
         self._protocol: DiscoveryProtocol | None = None
 
@@ -49,7 +49,7 @@ class Discovery:
 
     @asynccontextmanager
     async def _context(self, address: str | None = None):
-        async with self._semaphore:
+        async with self._lock:
             if self._transport is None:
                 self._transport, self._protocol = await asyncio.get_running_loop().create_datagram_endpoint(lambda: DiscoveryProtocol(address or self._broadcast), family = socket.AF_INET, allow_broadcast = True)
         self._protocol.responses.append(responses := asyncio.Queue())
@@ -69,11 +69,11 @@ class Discovery:
 
     async def discover(self, address: str | None = None):
         async with self._context(address) as responses:
-            while True:
-                k, v = await asyncio.wait_for(responses.get(), DISCOVERY_TIMEOUT)
-                yield k, v
-                if v["ip"] == address:
-                    break
+            while (v := await asyncio.wait_for(responses.get(), DISCOVERY_TIMEOUT)):
+                if v["hostname"].isdigit():
+                    yield dict(v, serial = int(v["hostname"]))
+                    if v["ip"] == address:
+                        break
 
 @singleton.singleton(f"{DOMAIN}_discovery")
 async def _get_discovery(hass: HomeAssistant):

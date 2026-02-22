@@ -64,6 +64,14 @@ parameters:
         rule: 2
         registers: [0x0418]
 
+      - name: "Production time - today"
+        class: "duration"
+        state_class: "measurement"
+        uom: "min"
+        rule: 1
+        registers: [0x0426]
+        icon: "mdi:clock-outline"
+
       - name: "Radiator temperature"
         class: "temperature"
         state_class: "measurement"
@@ -281,9 +289,8 @@ parameters:
         class: "power"
         state_class: "measurement"
         uom: "W"
-        # Reverse the original value to match standard behavior like the other inverters
-        #scale: -10
-        scale: 10
+        # Inverse value to match standard behavior of the other inverters
+        scale: -10
         rule: 2
         registers: [0x0606]
 
@@ -333,17 +340,16 @@ parameters:
             signed:
             registers: [0x0485]
 
-      - name: "Grid Power"
+      - name: "Grid power"
         class: "power"
         state_class: "measurement"
         uom: "W"
-        # Reverse the original value to match standard behavior like the other inverters
-        #scale: -10
-        scale: 10
+        # Inverse value to match standard behavior of the other inverters
+        scale: -10
         rule: 2
         registers: [0x0488]
 
-      - name: "L1 Voltage"
+      - name: "L1 voltage"
         l: 1
         class: "voltage"
         state_class: "measurement"
@@ -352,7 +358,7 @@ parameters:
         rule: 1
         registers: [0x048D]
 
-      - name: "L1 Current"
+      - name: "L1 current"
         l: 1
         class: "current"
         state_class: "measurement"
@@ -361,7 +367,7 @@ parameters:
         rule: 1
         registers: [0x048E]
 
-      - name: "L2 Voltage"
+      - name: "L2 voltage"
         l: 2
         class: "voltage"
         state_class: "measurement"
@@ -370,7 +376,7 @@ parameters:
         rule: 1
         registers: [0x0498]
 
-      - name: "L2 Current"
+      - name: "L2 current"
         l: 2
         class: "current"
         state_class: "measurement"
@@ -379,7 +385,7 @@ parameters:
         rule: 1
         registers: [0x0499]
 
-      - name: "L3 Voltage"
+      - name: "L3 voltage"
         l: 3
         class: "voltage"
         state_class: "measurement"
@@ -388,7 +394,7 @@ parameters:
         rule: 1
         registers: [0x04A3]
 
-      - name: "L3 Current"
+      - name: "L3 current"
         l: 3
         class: "current"
         state_class: "measurement"
@@ -397,7 +403,7 @@ parameters:
         rule: 1
         registers: [0x04A4]
 
-      - name: "Load Power"
+      - name: "Load power"
         class: "power"
         state_class: "measurement"
         uom: "W"
@@ -405,9 +411,8 @@ parameters:
         rule: 2
         registers: [0x04AF]
 
-      - name: "Load UPS Power"
+      - name: "Load UPS power"
         pack: 1
-        alt: "Active Power Load Total"
         class: "power"
         state_class: "measurement"
         uom: "W"
@@ -415,7 +420,27 @@ parameters:
         rule: 2
         registers: [0x0504]
 
-      - name: "Load UPS Frequency"
+      - name: "Load UPS reactive power"
+        hidden:
+        pack: 1
+        class: "reactive_power"
+        state_class: "measurement"
+        uom: "kvar"
+        scale: 10
+        rule: 2
+        registers: [0x0505]
+
+      - name: "Load UPS apparent power"
+        hidden:
+        pack: 1
+        class: "apparent_power"
+        state_class: "measurement"
+        uom: "VA"
+        scale: 0.1
+        rule: 2
+        registers: [0x0506]
+
+      - name: "Load UPS frequency"
         pack: 1
         class: "frequency"
         state_class: "measurement"
@@ -424,7 +449,7 @@ parameters:
         rule: 1
         registers: [0x0507]
 
-      - name: "Load UPS L1 Voltage"
+      - name: "Load UPS L1 voltage"
         pack: 1
         l: 1
         class: "voltage"
@@ -434,7 +459,7 @@ parameters:
         rule: 1
         registers: [0x050A]
 
-      - name: "Load UPS L1 Current"
+      - name: "Load UPS L1 current"
         pack: 1
         l: 1
         class: "current"
@@ -444,7 +469,7 @@ parameters:
         rule: 1
         registers: [0x050B]
 
-      - name: "Load UPS L1 Power"
+      - name: "Load UPS L1 power"
         pack: 1
         l: 1
         class: "power"
@@ -453,6 +478,165 @@ parameters:
         scale: 10
         rule: 2
         registers: [0x050C]
+
+      - name: "Load UPS L1 reactive power"
+        hidden:
+        pack: 1
+        l: 1
+        class: "reactive_power"
+        state_class: "measurement"
+        uom: "kvar"
+        scale: 10
+        rule: 2
+        registers: [0x050D]
+
+      - name: "Load UPS L1 apparent power"
+        hidden:
+        pack: 1
+        l: 1
+        class: "apparent_power"
+        state_class: "measurement"
+        uom: "VA"
+        scale: 0.1
+        rule: 2
+        registers: [0x050E]
+
+      - name: "Load UPS L1 power factor"
+        hidden:
+        pack: 1
+        l: 1
+        class: "power_factor"
+        state_class: "measurement"
+        uom: "%"
+        scale: 0.01
+        rule: 2
+        registers: [0x050F]
+
+      - name: "Load UPS L2 voltage"
+        pack: 1
+        l: 2
+        class: "voltage"
+        state_class: "measurement"
+        uom: "V"
+        scale: 0.1
+        rule: 1
+        registers: [0x0512]
+
+      - name: "Load UPS L2 current"
+        pack: 1
+        l: 2
+        class: "current"
+        state_class: "measurement"
+        uom: "A"
+        scale: 0.01
+        rule: 1
+        registers: [0x0513]
+
+      - name: "Load UPS L2 power"
+        pack: 1
+        l: 2
+        class: "power"
+        state_class: "measurement"
+        uom: "W"
+        scale: 10
+        rule: 2
+        registers: [0x0514]
+
+      - name: "Load UPS L2 reactive power"
+        hidden:
+        pack: 1
+        l: 2
+        class: "reactive_power"
+        state_class: "measurement"
+        uom: "kvar"
+        scale: 10
+        rule: 2
+        registers: [0x0515]
+
+      - name: "Load UPS L2 apparent power"
+        hidden:
+        pack: 1
+        l: 2
+        class: "apparent_power"
+        state_class: "measurement"
+        uom: "VA"
+        scale: 0.1
+        rule: 2
+        registers: [0x0516]
+
+      - name: "Load UPS L2 power factor"
+        hidden:
+        pack: 1
+        l: 2
+        class: "power_factor"
+        state_class: "measurement"
+        uom: "%"
+        scale: 0.01
+        rule: 2
+        registers: [0x0517]
+
+      - name: "Load UPS L3 voltage"
+        pack: 1
+        l: 3
+        class: "voltage"
+        state_class: "measurement"
+        uom: "V"
+        scale: 0.1
+        rule: 1
+        registers: [0x051A]
+
+      - name: "Load UPS L3 current"
+        pack: 1
+        l: 3
+        class: "current"
+        state_class: "measurement"
+        uom: "A"
+        scale: 0.01
+        rule: 1
+        registers: [0x051B]
+
+      - name: "Load UPS L3 power"
+        pack: 1
+        l: 3
+        class: "power"
+        state_class: "measurement"
+        uom: "W"
+        scale: 10
+        rule: 2
+        registers: [0x051C]
+
+      - name: "Load UPS L3 reactive power"
+        hidden:
+        pack: 1
+        l: 3
+        class: "reactive_power"
+        state_class: "measurement"
+        uom: "kvar"
+        scale: 10
+        rule: 2
+        registers: [0x051D]
+
+      - name: "Load UPS L3 apparent power"
+        hidden:
+        pack: 1
+        l: 3
+        class: "apparent_power"
+        state_class: "measurement"
+        uom: "VA"
+        scale: 0.1
+        rule: 2
+        registers: [0x051E]
+
+      - name: "Load UPS L3 power factor"
+        hidden:
+        pack: 1
+        l: 3
+        class: "power_factor"
+        state_class: "measurement"
+        uom: "%"
+        scale: 0.01
+        rule: 2
+        registers: [0x051F]
 
   - group: Energy
     update_interval: 30
@@ -644,6 +828,9 @@ parameters:
             value: "Enabled"
           - key: 0x0002
             value: "Balanced"
+        writeback:
+          register: 0x1023
+          count: 2
 
       - name: Export Surplus Power
         platform: number
@@ -656,32 +843,65 @@ parameters:
         range:
           min: 0
           max: 65535
+        writeback:
+          register: 0x1023
+          count: 2
 
       - name: "Battery DOD"
         pack: 1
+        platform: number
         alt: "Battery Depth of Discharge"
         state_class: "measurement"
         uom: "%"
         rule: 1
         registers: [0x104D]
         icon: "mdi:battery"
+        range:
+          min: 1
+          max: 90
+        writeback:
+          register: 0x1044
+          count: 19
+          overrides:
+            - register: 0x1053
+              value: 0x0001
 
       - name: "Battery EOD"
         pack: 1
+        platform: number
         alt: "Battery End of Discharge"
         state_class: "measurement"
         uom: "%"
         rule: 1
         registers: [0x104E]
         icon: "mdi:battery"
+        range:
+          min: 1
+          max: 90
+        writeback:
+          register: 0x1044
+          count: 19
+          overrides:
+            - register: 0x1053
+              value: 0x0001
 
       - name: "Battery EPS Buffer"
         pack: 1
+        platform: number
         state_class: "measurement"
         uom: "%"
         rule: 1
         registers: [0x1052]
         icon: "mdi:battery-low"
+        range:
+          min: 5
+          max: 100
+        writeback:
+          register: 0x1044
+          count: 19
+          overrides:
+            - register: 0x1053
+              value: 0x0001
 
       - name: "Storage Control Mode"
         pack: 1
@@ -708,36 +928,48 @@ parameters:
 
       - name: "Passive: Grid power"
         pack: 1
+        platform: number
         class: "power"
         state_class: "measurement"
         uom: "W"
         rule: 2
         registers: [0x1188, 0x1187]
         range:
-          min: -2147483648 
+          min: -2147483648
           max: 2147483647
+        writeback:
+          register: 0x1187
+          count: 6
 
       - name: "Passive: Minimum Battery power"
         pack: 1
+        platform: number
         class: "power"
         state_class: "measurement"
         uom: "W"
         rule: 2
         registers: [0x118A, 0x1189]
         range:
-          min: -2147483648 
+          min: -2147483648
           max: 2147483647
+        writeback:
+          register: 0x1187
+          count: 6
 
       - name: "Passive: Maximum Battery power"
         pack: 1
+        platform: number
         class: "power"
         state_class: "measurement"
         uom: "W"
         rule: 2
         registers: [0x118C, 0x118B]
         range:
-          min: -2147483648 
+          min: -2147483648
           max: 2147483647
+        writeback:
+          register: 0x1187
+          count: 6
 
   - group: Alarm
     items:

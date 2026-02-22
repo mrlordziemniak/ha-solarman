@@ -12,7 +12,7 @@ from .common import *
 _LOGGER = getLogger(__name__)
 
 class ParameterParser:
-    def __init__(self, profile, parameters):
+    def __init__(self):
         self._update_interval = DEFAULT_[UPDATE_INTERVAL]
         self._is_single_code = DEFAULT_[IS_SINGLE_CODE]
         self._code = DEFAULT_[REGISTERS_CODE]
@@ -23,8 +23,17 @@ class ParameterParser:
         self._previous_result = {}
         self._result = {}
 
-        if "default" in profile:
-            default = profile["default"]
+        self.info: dict[str, str] = {}
+
+    async def init(self, path: str, filename: str, parameters: dict):
+        profile = await yaml_open(path + filename)
+
+        if "info" in profile:
+            self.info = unwrap(profile["info"], "model", parameters[PARAM_[CONF_MOD]])
+        
+        self.info |= {"filename": filename}
+
+        if "default" in profile and (default := profile["default"]):
             if REQUEST_UPDATE_INTERVAL in default:
                 self._update_interval = default[REQUEST_UPDATE_INTERVAL]
             if REQUEST_CODE in default:
@@ -38,13 +47,13 @@ class ParameterParser:
 
         if "requests" in profile and "requests_fine_control" in profile:
             _LOGGER.debug("Fine control of request sets is enabled!")
-            self._requests = profile["requests"]
+            self._requests = [create_request(get_request_code(r, self._code), r[REQUEST_START], r[REQUEST_END]) for r in profile["requests"]]
 
-        _LOGGER.debug(f"{'Defaults' if 'default' in profile else 'Stock values'} for update_interval: {self._update_interval}, code: {self._code}, min_span: {self._min_span}, max_size: {self._max_size}, digits: {self._digits}, parameters: {parameters}")
+        _LOGGER.debug(f"{filename} w/ {'defaults' if 'default' in profile else 'stock values'} for update_interval: {self._update_interval}, code: {self._code}, min_span: {self._min_span}, max_size: {self._max_size}, digits: {self._digits}, parameters: {parameters}")
 
         table = {r: get_request_code(pr) for pr in profile["requests"] for r in range(pr[REQUEST_START], pr[REQUEST_END] + 1)} if "requests" in profile and not "requests_fine_control" in profile else {}
 
-        self._items = [i for i in sorted([preprocess_descriptions(item, group, table, self._code, parameters) for group in profile["parameters"] for item in group["items"]], key = lambda x: (get_code(x, "read", self._code), max(x["registers"])) if x.get("registers") else (-1, -1)) if len((a := i.keys() & parameters.keys())) == 0 or all(i[k] <= parameters[k] for k in a)]
+        self._items: list[dict] = [i for i in sorted([preprocess_descriptions(item, group, table, self._code, parameters) for group in profile["parameters"] for item in group["items"]], key = lambda x: (get_code(x, "read", self._code), max(x["registers"])) if x.get("registers") else (-1, -1)) if enforce_parameters(i, parameters)]
 
         if (items_codes := [get_code(i, "read", self._code) for i in self._items if "registers" in i]) and (is_single_code := all_same(items_codes)):
             self._is_single_code = is_single_code
@@ -54,6 +63,8 @@ class ParameterParser:
 
         self._lambda = lambda x, y, z: l(x[1], y[1]) or y[1] - z[1] >= self._max_size
         self._lambda_code_aware = lambda x, y, z: x[0] != y[0] or self._lambda(x, y, z)
+
+        return self
 
     def is_valid(self, parameters):
         return "name" in parameters and "rule" in parameters # and "registers" in parameters
@@ -73,8 +84,8 @@ class ParameterParser:
     def set_state(self, key, state, value = None):
         self._result[key] = (state, value)
 
-    def get_entity_descriptions(self, platform: str):
-        return [i for i in self._items if self.is_valid(i) and self.is_enabled(i) and not "attribute" in i and i.get("platform") == platform]
+    def get_entity_descriptions(self, platform: str | None = None):
+        return [i for i in self._items if self.is_valid(i) and self.is_enabled(i) and not "attribute" in i and (i.get("platform") == platform or platform is None)]
 
     def schedule_requests(self, runtime):
         self._result = {}
@@ -225,7 +236,7 @@ class ParameterParser:
             shift += 16
 
         if value > (maxint >> 1):
-            value = (value - maxint) if not magnitude else -(value & (maxint >> 1))
+            value = (value - maxint - 1) if not magnitude else -(value & (maxint >> 1))
 
         if (range := definition.get("range")) and not self.in_range(definition["key"], value, range):
             return range.get("default")

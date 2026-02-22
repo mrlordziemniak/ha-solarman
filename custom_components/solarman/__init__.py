@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from logging import getLogger
 from datetime import datetime
 
@@ -22,7 +23,8 @@ from .config_flow import ConfigFlowHandler
 
 _LOGGER = getLogger(__name__)
 
-_PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.NUMBER, Platform.SWITCH, Platform.BUTTON, Platform.SELECT, Platform.DATETIME, Platform.TIME]
+_DIRECTORY = Path(__file__).parent
+_PLATFORMS = [i for i in Platform._member_map_.values() if _DIRECTORY.joinpath(i.value + ".py").is_file()]
 
 CONFIG_SCHEMA = config_validation.empty_config_schema(DOMAIN)
 
@@ -37,8 +39,8 @@ async def async_setup(hass: HomeAssistant, _: ConfigType):
     register(hass)
 
     async def discovery(*_: datetime):
-        async for k, v in await discover(hass):
-            discovery_flow.async_create_flow(hass, DOMAIN, context = {"source": SOURCE_INTEGRATION_DISCOVERY}, data = dict(v, serial = k))
+        async for v in await discover(hass):
+            discovery_flow.async_create_flow(hass, DOMAIN, context = {"source": SOURCE_INTEGRATION_DISCOVERY}, data = v)
 
     hass.async_create_background_task(discovery(), "Solarman setup discovery")
 

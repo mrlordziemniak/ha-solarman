@@ -46,7 +46,7 @@ def _create_entity(coordinator, description, options):
 async def async_setup_entry(_: HomeAssistant, config_entry: ConfigEntry[Coordinator], async_add_entities: AddEntitiesCallback) -> bool:
     _LOGGER.debug(f"async_setup_entry: {config_entry.options}")
 
-    async_add_entities([SolarmanIntervalSensor(config_entry.runtime_data)] + [_create_entity(config_entry.runtime_data, d, config_entry.options).init() for d in postprocess_descriptions(config_entry.runtime_data, _PLATFORM)])
+    async_add_entities([SolarmanIntervalSensor(config_entry.runtime_data)] + [_create_entity(config_entry.runtime_data, d, config_entry.options).init() for d in config_entry.runtime_data.device.profile.parser.get_entity_descriptions(_PLATFORM)])
 
     return True
 
@@ -66,7 +66,8 @@ class SolarmanIntervalSensor(SolarmanSensorEntity):
         super().__init__(coordinator, {"key": "update_interval_sensor", "name": "Update Interval"})
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_native_unit_of_measurement = "s"
-        self._attr_state_class = "duration"
+        self._attr_state_class = "measurement"
+        self._attr_device_class = "duration"
         self._attr_icon = "mdi:update"
         self._attr_native_value = 0
 
@@ -155,8 +156,8 @@ class SolarmanBatteryCapacitySensor(SolarmanRestoreSensor):
                         self._states.pop(0)
                     self._attr_extra_state_attributes["states"] = self._states
                     self._temp = [(power, soc, tb)]
-                    if (srtd := sorted(self._states)[5:-5] if len(self._states) > 10 else sorted(self._states)):
-                        self.set_state(get_number(sum(srtd) / len(srtd), self._digits))
+                    if (srtd := sorted(self._states)[5:-5] if len(self._states) > 10 else None):
+                        self.set_state(get_number(sum(srtd) / len(srtd), self._digits) if srtd else None)
 
 class SolarmanBatteryCustomSensor(SolarmanSensor):
     def __init__(self, coordinator, sensor, battery_nominal_voltage, battery_life_cycle_rating):

@@ -72,41 +72,42 @@ class Solarman:
         self._keeper: asyncio.Task | None = None
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
-        self._semaphore = asyncio.Semaphore(1)
-        self._data_queue = asyncio.Queue(maxsize = 1)
+        self._lock = asyncio.Lock()
+        self._data_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize = 1)
         self._data_event = Event()
         self._last_frame: bytes | None = None
 
     @staticmethod
-    def _get_response_code(code: int) -> int:
+    def _get_response_code(code: int):
         return code - 0x30
 
     @staticmethod
-    def _calculate_checksum(frame: bytes) -> int:
+    def _calculate_checksum(frame: bytes):
         checksum = 0
         for d in frame:
             checksum += d & 0xFF
         return int(checksum & 0xFF)
 
     @property
-    def serial(self) -> int:
+    def serial(self):
         return self._serial
 
     @serial.setter
-    def serial(self, value: int | bytes) -> None:
-        if isinstance(value, int):
-            self._serial = value
-            self.serial_bytes = struct.pack("<I", value) if value > 0 else PROTOCOL.PLACEHOLDER3
-        else:
-            self._serial = int.from_bytes(value, "little")
-            self.serial_bytes = value
+    def serial(self, value: int | bytes):
+        match value:
+            case int():
+                self._serial = value
+                self.serial_bytes = struct.pack("<I", value) if 2147483648 <= value <= 4294967295 else PROTOCOL.PLACEHOLDER3
+            case bytes():
+                self._serial = int.from_bytes(value, "little")
+                self.serial_bytes = value
 
     @property
-    def transport(self) -> str:
+    def transport(self):
         return self._transport
 
     @transport.setter
-    def transport(self, value: str) -> None:
+    def transport(self, value: str):
         self._transport = value
         if value == "tcp":
             self._get_response = self._parse_adu_from_sol_response
@@ -117,14 +118,14 @@ class Solarman:
 
     @property
     def connected(self):
-        return self._keeper and not self._keeper.done()
+        return self._keeper is not None and not self._keeper.done()
 
     @property
-    def sequence_number(self) -> int:
+    def sequence_number(self):
         self._sequence_number = ((self._sequence_number + 1) & 0xFF) if hasattr(self, "_sequence_number") else randrange(0x01, 0xFF)
         return self._sequence_number
 
-    def _protocol_header(self, length: int, control: int, seq: bytes) -> bytearray:
+    def _protocol_header(self, length: int, control: int, seq: bytes):
         return bytearray(PROTOCOL.START
             + struct.pack("<H", length)
             + PROTOCOL.CONTROL_CODE_SUFFIX
@@ -132,16 +133,16 @@ class Solarman:
             + seq
             + self.serial_bytes)
 
-    def _protocol_trailer(self, frame: bytes) -> bytearray:
+    def _protocol_trailer(self, frame: bytes):
         return bytearray(struct.pack("<B", self._calculate_checksum(frame[1:])) + PROTOCOL.END)
 
-    def _received_frame_is_valid(self, frame: bytes) -> bool:
+    def _received_frame_is_valid(self, frame: bytes):
         if not frame.startswith(PROTOCOL.START):
             _LOGGER.debug(f"[{self.host}] PROTOCOL_MISMATCH: {frame.hex(" ")}")
             return False
         if frame[5] != self._sequence_number:
             if frame[4] == PROTOCOL.CONTROL_CODE.REQUEST and len(frame) > 6 and (f := int.from_bytes(frame[5:6], "big") == len(frame[6:])) and (int.from_bytes(frame[8:9], "big") == len(frame[9:]) if len(frame) > 9 else f):
-                _LOGGER.debug(f"[{self.host}] TCP_DETECTED: %s", self.host, frame.hex(" "))
+                _LOGGER.debug(f"[{self.host}] TCP_DETECTED: {frame.hex(" ")}")
                 self.transport = "modbus_tcp"
                 return True
             _LOGGER.debug(f"[{self.host}] SEQ_MISMATCH: {frame.hex(" ")}")
@@ -151,7 +152,7 @@ class Solarman:
             return False
         return True
 
-    def _received_frame_response(self, frame: bytes) -> tuple[bool, bytearray]:
+    def _received_frame_response(self, frame: bytes):
         do_continue = True
         response_frame = None
         if frame[4] != PROTOCOL.CONTROL_CODE.REQUEST and frame[4] in PROTOCOL.CONTROL_CODES:
@@ -168,7 +169,7 @@ class Solarman:
             _LOGGER.debug(f"[{self.host}] PROTOCOL_{control_name} SENT: {response_frame.hex(" ")}")
         return do_continue, response_frame
 
-    async def _write(self, data: bytes) -> None:
+    async def _write(self, data: bytes):
         try:
             self._writer.write(data)
             await self._writer.drain()
@@ -186,7 +187,7 @@ class Solarman:
                 await self._write(response_frame)
         return do_continue
 
-    async def _keeper_loop(self) -> None:
+    async def _keeper_loop(self):
         while True:
             try:
                 data = await self._reader.read(1024)
@@ -243,7 +244,7 @@ class Solarman:
     @throttle(0.1)
     @log_call("SENT")
     @log_return("RECV")
-    async def _send_receive_frame(self, frame: bytes) -> bytes:
+    async def _send_receive_frame(self, frame: bytes):
         if not self._writer:
             if not self.connected:
                 self._keeper = create_task(self._open_connection())
@@ -274,7 +275,7 @@ class Solarman:
             return await self._send_receive_frame(request_frame + self._protocol_trailer(request_frame))
         req = rtu.function_code_to_function_map[code](self.slave, address, **kwargs)
         res = await _get_sol_response(req)
-        if self.serial_bytes == PROTOCOL.PLACEHOLDER3:
+        if self.serial_bytes == PROTOCOL.PLACEHOLDER3 and self.transport == "tcp":
             self.serial = res[7:11]
             _LOGGER.debug(f"[{self.host}] SERIAL_SET: {self.serial}")
             res = await _get_sol_response(req)
@@ -307,21 +308,21 @@ class Solarman:
         return tcp.parse_response_adu(res, req)
 
     @retry()
-    async def get_response(self, code: int, address: int, **kwargs) -> list[int]:
+    async def get_response(self, code: int, address: int, **kwargs):
         return await self._get_response(code, address, **kwargs)
 
     @log_return("DATA")
-    async def execute(self, code: int, address: int, **kwargs) -> list[int]:
+    async def execute(self, code: int, address: int, **kwargs):
         if code not in FUNCTION_CODES:
             raise Exception(f"Invalid modbus function code {code:02}")
 
         async with asyncio.timeout(self.timeout * 6):
-            async with self._semaphore:
+            async with self._lock:
                 return await self.get_response(code, address, **kwargs)
 
     @log_call("Closing connection")
-    async def close(self) -> None:
-        async with self._semaphore:
+    async def close(self):
+        async with self._lock:
             if self.connected:
                 self._keeper.cancel()
 
